@@ -1,6 +1,7 @@
-import { Box, Card, CardActionArea, CardContent, Chip, Stack, Typography } from '@mui/material';
+import { Box, Card, CardActionArea, CardContent, Chip, Stack, Tooltip, Typography } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import {
+  CATEGORY_LABELS,
   FALL_OR_FIND_LABELS,
   WEATHERING_LABELS,
   type MeteoriteSample,
@@ -15,6 +16,8 @@ interface SampleCardProps {
   find?: FindRecord;
   sectionCount?: number;
   analysisCount?: number;
+  /** 当前认定推导出的分类与登记不一致时，展示待裁定角标 */
+  derivedCategory?: MeteoriteSample['category'];
   to?: string;
 }
 
@@ -24,11 +27,15 @@ export function SampleCard({
   find,
   sectionCount = 0,
   analysisCount = 0,
+  derivedCategory,
   to,
 }: SampleCardProps) {
   const missing: string[] = [];
   if (!find) missing.push('缺坐标');
   if (sectionCount === 0) missing.push('缺切片');
+
+  // 与入藏登记分类对不上：先照登记值展示，标成待裁定
+  const pending = derivedCategory !== undefined && derivedCategory !== sample.category;
 
   return (
     <Card
@@ -62,7 +69,16 @@ export function SampleCard({
             </Typography>
           </Stack>
 
-          <ClassificationBadge category={sample.category} group={sample.chemicalGroup} />
+          <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+            <ClassificationBadge category={sample.category} group={sample.chemicalGroup} />
+            {pending ? (
+              <Tooltip
+                title={`当前认定推导为「${CATEGORY_LABELS[derivedCategory]}」，与入藏登记不一致，待裁定`}
+              >
+                <Chip size="small" color="warning" variant="outlined" label="待裁定" />
+              </Tooltip>
+            ) : null}
+          </Stack>
 
           <Typography variant="body2" color="text.secondary">
             {FALL_OR_FIND_LABELS[sample.fallOrFind]} · {WEATHERING_LABELS[sample.weathering]}

@@ -14,6 +14,7 @@ import {
 import { Link as RouterLink } from 'react-router-dom';
 import EmptyState from '../components/common/EmptyState';
 import ClassificationBadge from '../components/common/Badge';
+import { useConclusions } from '../hooks/useConclusions';
 import { useRegionStats } from '../hooks/useRegionStats';
 import { useSampleStore } from '../stores/sampleStore';
 import { CATEGORY_LABELS, type SampleCategory } from '../types/sample';
@@ -29,6 +30,7 @@ export default function Locations() {
   const { stats, totalSamples, totalWeight } = useRegionStats();
   const finds = useSampleStore((s) => s.finds);
   const samples = useSampleStore((s) => s.samples);
+  const conclusions = useConclusions();
   const [activeRegion, setActiveRegion] = useState<string | null>(null);
   const [activePoint, setActivePoint] = useState<string | null>(null);
 
@@ -181,6 +183,14 @@ export default function Locations() {
                           category={activeFind.sample.category}
                           group={activeFind.sample.chemicalGroup}
                         />
+                        {conclusions.get(activeFind.sample.id)?.pending ? (
+                          <Chip
+                            size="small"
+                            color="warning"
+                            variant="outlined"
+                            label={`待裁定（当前认定：${CATEGORY_LABELS[conclusions.get(activeFind.sample.id)!.derivedCategory]}）`}
+                          />
+                        ) : null}
                       </>
                     ) : (
                       <Alert severity="warning">关联样本已不存在</Alert>

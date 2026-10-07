@@ -12,6 +12,8 @@ export const DB_NAME = 'gbmeteorite-db';
  *  - v1：建 samples / finds / sections 三张表
  *  - v2：新增 analysis 表，并为 analysis 加 sampleId 索引
  *  - v3：为 samples 补 updatedAt 字段，并按 id 回填旧记录
+ *  - v4：为 analysis 补 status（当前认定 / 历史）索引，已有数据按
+ *        「同一样本最新一条为当前认定，其余退为历史」回填
  */
 export class MeteoriteDB extends Dexie {
   samples!: Table<MeteoriteSample, string>;
@@ -63,6 +65,33 @@ export class MeteoriteDB extends Dexie {
               sample.updatedAt =
                 typeof sample.createdAt === 'number' ? sample.createdAt : Date.now();
             }
+          });
+      });
+
+    this.version(4)
+      .stores({
+        samples:
+          'id, sampleNo, category, chemicalGroup, totalWeight, createdAt, updatedAt',
+        finds: 'id, sampleId, region, createdAt',
+        sections: 'id, sectionNo, sampleId, thickness, createdAt',
+        analysis: 'id, sampleId, sectionId, method, status, testedAt, createdAt',
+      })
+      .upgrade(async (tx) => {
+        // v4：已有检测记录按样本分组，最新一条当当前认定，其余退为历史
+        const all = await tx.table<AnalysisRecord, string>('analysis').toArray();
+        const latestBySample = new Map<string, AnalysisRecord>();
+        for (const rec of all) {
+          const latest = latestBySample.get(rec.sampleId);
+          if (!latest || rec.testedAt > latest.testedAt ||
+            (rec.testedAt === latest.testedAt && rec.createdAt > latest.createdAt)) {
+            latestBySample.set(rec.sampleId, rec);
+          }
+        }
+        await tx
+          .table<AnalysisRecord, string>('analysis')
+          .toCollection()
+          .modify((rec) => {
+            rec.status = latestBySample.get(rec.sampleId)?.id === rec.id ? 'current' : 'history';
           });
       });
   }
@@ -184,6 +213,7 @@ export async function seedIfEmpty(): Promise<void> {
         ni: 0.8,
         kamaciteBandwidth: 0.02,
         testedAt: '2024-06-12',
+        status: 'current',
         createdAt: now - 86400000 * 20,
       },
       {
@@ -196,6 +226,7 @@ export async function seedIfEmpty(): Promise<void> {
         ni: 7.4,
         kamaciteBandwidth: 0.62,
         testedAt: '2024-07-03',
+        status: 'current',
         createdAt: now - 86400000 * 12,
       },
     ]);

@@ -18,6 +18,7 @@ import {
 import { Link as RouterLink } from 'react-router-dom';
 import EmptyState from '../components/common/EmptyState';
 import ClassificationBadge from '../components/common/Badge';
+import { useConclusions } from '../hooks/useConclusions';
 import { useSampleFilter } from '../hooks/useSampleFilter';
 import { useSampleStore } from '../stores/sampleStore';
 import { useToastStore } from '../stores/uiStore';
@@ -30,6 +31,7 @@ import {
   mineralTotal,
   type SectionQuality,
 } from '../types/section';
+import { CATEGORY_LABELS } from '../types/sample';
 import { formatDate } from '../utils/format';
 
 /** `/sections` 切片库 */
@@ -39,6 +41,7 @@ export default function Sections() {
   const updateSection = useSampleStore((s) => s.updateSection);
   const notify = useToastStore((s) => s.notify);
   const { results } = useSampleFilter();
+  const conclusions = useConclusions();
 
   const [thicknessMin, setThicknessMin] = useState<number | null>(null);
   const [thicknessMax, setThicknessMax] = useState<number | null>(null);
@@ -180,10 +183,20 @@ export default function Sections() {
                         >
                           {sample.sampleNo} ↗
                         </Typography>
-                        <ClassificationBadge
-                          category={sample.category}
-                          group={sample.chemicalGroup}
-                        />
+                        <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                          <ClassificationBadge
+                            category={sample.category}
+                            group={sample.chemicalGroup}
+                          />
+                          {conclusions.get(sample.id)?.pending ? (
+                            <Chip
+                              size="small"
+                              color="warning"
+                              variant="outlined"
+                              label={`待裁定（当前认定：${CATEGORY_LABELS[conclusions.get(sample.id)!.derivedCategory]}）`}
+                            />
+                          ) : null}
+                        </Stack>
                       </Stack>
                     ) : (
                       <Alert severity="warning">关联样本已不存在</Alert>

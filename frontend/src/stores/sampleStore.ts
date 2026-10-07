@@ -20,6 +20,8 @@ export interface SampleState {
   addSection: (input: Omit<ThinSection, 'id' | 'createdAt'>) => Promise<string>;
   updateSection: (id: string, patch: Partial<ThinSection>) => Promise<void>;
   addAnalysis: (input: Omit<AnalysisRecord, 'id' | 'createdAt'>) => Promise<string>;
+  /** 把一条历史检测记录重新设为当前认定，同样本其余记录退为历史 */
+  promoteAnalysis: (id: string) => Promise<void>;
   nextSampleSeq: () => number;
 }
 
@@ -98,10 +100,51 @@ export const useSampleStore = create<SampleState>((set, get) => ({
   },
 
   addAnalysis: async (input) => {
-    const record: AnalysisRecord = { ...input, id: makeId('analysis'), createdAt: Date.now() };
-    await db.analysis.add(record);
-    set({ analysis: [record, ...get().analysis] });
+    const record: AnalysisRecord = {
+      ...input,
+      // 复测入档即为当前认定；显式传 history 的入口保留，但常规录入走 current
+      status: input.status ?? 'current',
+      id: makeId('analysis'),
+      createdAt: Date.now(),
+    };
+    // 同一事务内：新记录入档，同样本原有的当前认定被顶下去退成历史
+    await db.transaction('rw', db.analysis, async () => {
+      if (record.status === 'current') {
+        await db.analysis
+          .where('sampleId')
+          .equals(record.sampleId)
+          .filter((a) => a.status === 'current')
+          .modify({ status: 'history' });
+      }
+      await db.analysis.add(record);
+    });
+    const next = get().analysis.map((a) =>
+      a.sampleId === record.sampleId && a.status === 'current' ? { ...a, status: 'history' as const } : a,
+    );
+    set({ analysis: [record, ...next] });
     return record.id;
+  },
+
+  promoteAnalysis: async (id) => {
+    const target = get().analysis.find((a) => a.id === id);
+    if (!target || target.status === 'current') return;
+    await db.transaction('rw', db.analysis, async () => {
+      await db.analysis
+        .where('sampleId')
+        .equals(target.sampleId)
+        .filter((a) => a.status === 'current')
+        .modify({ status: 'history' });
+      await db.analysis.update(id, { status: 'current' });
+    });
+    set({
+      analysis: get().analysis.map((a) => {
+        if (a.id === id) return { ...a, status: 'current' as const };
+        if (a.sampleId === target.sampleId && a.status === 'current') {
+          return { ...a, status: 'history' as const };
+        }
+        return a;
+      }),
+    });
   },
 
   nextSampleSeq: () => {

@@ -16,6 +16,7 @@ import AddIcon from '@mui/icons-material/Add';
 import { Link as RouterLink } from 'react-router-dom';
 import SampleCard from '../components/common/SampleCard';
 import EmptyState from '../components/common/EmptyState';
+import { useConclusions } from '../hooks/useConclusions';
 import { useSampleFilter } from '../hooks/useSampleFilter';
 import { useSampleStore } from '../stores/sampleStore';
 import { useUiStore } from '../stores/uiStore';
@@ -36,6 +37,7 @@ export default function Overview() {
   const analysis = useSampleStore((s) => s.analysis);
 
   const ui = useUiStore();
+  const conclusions = useConclusions();
 
   const findBySample = useMemo(() => new Map(finds.map((f) => [f.sampleId, f])), [finds]);
   const sectionCount = useMemo(() => {
@@ -194,6 +196,7 @@ export default function Overview() {
                 find={findBySample.get(s.id)}
                 sectionCount={sectionCount.get(s.id) ?? 0}
                 analysisCount={analysisCount.get(s.id) ?? 0}
+                derivedCategory={conclusions.get(s.id)?.derivedCategory}
               />
             </Grid>
           ))}

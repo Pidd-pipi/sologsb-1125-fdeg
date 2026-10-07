@@ -6,6 +6,13 @@ export type AnalysisMethod = 'microprobe' | 'sem-eds';
 /** 检测对象类型 */
 export type AnalysisTarget = 'sample' | 'section';
 
+/**
+ * 检测记录的认定状态（v4 新增）：
+ *  - current：当前认定，同一样本至多一条，样本的分类结论由它推导
+ *  - history：历史记录，复测入档后被顶下去的旧记录退为历史，仍可查阅
+ */
+export type AnalysisStatus = 'current' | 'history';
+
 /** 分析检测结果（AnalysisRecord） */
 export interface AnalysisRecord {
   id: string;
@@ -25,6 +32,8 @@ export interface AnalysisRecord {
   kamaciteBandwidth: number;
   /** 检测日期 YYYY-MM-DD */
   testedAt: string;
+  /** v4 新增：当前认定 / 历史记录；旧数据缺省时按最新一条回填为 current */
+  status: AnalysisStatus;
   createdAt: number;
 }
 
@@ -40,6 +49,11 @@ export const ANALYSIS_TARGET_LABELS: Record<AnalysisTarget, string> = {
 
 export const ANALYSIS_METHODS: AnalysisMethod[] = ['microprobe', 'sem-eds'];
 export const ANALYSIS_TARGETS: AnalysisTarget[] = ['sample', 'section'];
+
+export const ANALYSIS_STATUS_LABELS: Record<AnalysisStatus, string> = {
+  current: '当前认定',
+  history: '历史记录',
+};
 
 /** 阈值定义：用于分类建议与命中说明 */
 export interface AnalysisThreshold {
@@ -74,7 +88,7 @@ export interface AnalysisEvaluation {
   advice: ClassificationAdvice;
 }
 
-/** 生成一条空检测记录骨架 */
+/** 生成一条空检测记录骨架（新录入的检测入档即为当前认定） */
 export function emptyAnalysisDraft(sampleId: string): Omit<AnalysisRecord, 'id' | 'createdAt'> {
   return {
     sampleId,
@@ -85,5 +99,6 @@ export function emptyAnalysisDraft(sampleId: string): Omit<AnalysisRecord, 'id' 
     ni: 0,
     kamaciteBandwidth: 0,
     testedAt: new Date().toISOString().slice(0, 10),
+    status: 'current',
   };
 }

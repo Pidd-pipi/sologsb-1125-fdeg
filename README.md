@@ -52,7 +52,7 @@ docker compose down
 - `types/sample.ts` — **MeteoriteSample**：id、样本编号、总重量 g、分类、化学群、风化等级 W0–W4、发现/坠落、存放位置
 - `types/find.ts` — **FindRecord**：id、关联样本、地名、国家地区、经纬度、坐标来源（GPS/文献）、发现环境、发现者
 - `types/section.ts` — **ThinSection**：id、切片编号、关联样本、厚度 μm、制样方式、矿物占比、显微照片清单
-- `types/analysis.ts` — **AnalysisRecord**：id、关联样本或切片、方法、橄榄石 Fa、辉石 Fs、Ni wt%、铁纹石带宽 mm、检测日期
+- `types/analysis.ts` — **AnalysisRecord**：id、关联样本或切片、方法、橄榄石 Fa、辉石 Fs、Ni wt%、铁纹石带宽 mm、检测日期、认定状态（`current` 当前认定 / `history` 历史）
 
 ## 目录结构
 
@@ -74,10 +74,10 @@ sologsb-1125/
         ├── db/index.ts                 # Dexie 封装与 v1→v3 升级迁移
         ├── stores/{sampleStore,uiStore}.ts
         ├── components/common/{SampleCard,Badge,FieldGroup,EmptyState,CoordinatePicker,AppShell}.tsx
-        ├── hooks/{useSampleFilter,useLocalDraft,useRegionStats}.ts
+        ├── hooks/{useSampleFilter,useLocalDraft,useRegionStats,useConclusions}.ts
         ├── pages/{Overview,New,Detail,Sections,Analysis,Locations}.tsx
         ├── router/index.tsx
-        └── utils/{classify,format,geo}.ts
+        └── utils/{classify,conclusion,format,geo}.ts
 ```
 
 ## 数据存储说明
@@ -87,6 +87,8 @@ sologsb-1125/
   - v1 建 `samples` / `finds` / `sections`
   - v2 新增 `analysis` 表并加 `sampleId` 索引
   - v3 为 `samples` 补 `updatedAt` 字段并按 id 回填旧记录
+  - v4 为 `analysis` 补 `status`（`current` 当前认定 / `history` 历史）索引；升级时同一样本**最新一条检测当当前认定**，其余退为历史
+- **当前认定与分类结论**：每条检测记录带认定状态，复测入档即在同一事务内成为当前认定，被顶下去的旧记录退为历史且仍可查阅（可在检测列表「设为当前认定」改判）。样本的分类结论由当前认定推导；推导分类与入藏登记不一致时，**先照登记值展示并标成「待裁定」**。检测记录改动后结论立即重算，样本总览、样本详情、切片库与发现地分布同步刷新（筛选/着色仍以登记分类为准）
 - **草稿**：`/samples/new` 与 `/analysis` 的表单草稿写入 localStorage（键前缀 `gbmeteorite:draft:`），切页自动恢复，提交后清理
 - 首次打开会灌入 3 份演示样本、2 条发现记录、2 张切片与 2 条检测记录，便于直接体验筛选与打点
 

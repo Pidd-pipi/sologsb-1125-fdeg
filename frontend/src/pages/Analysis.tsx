@@ -28,12 +28,15 @@ import { useToastStore } from '../stores/uiStore';
 import {
   ANALYSIS_METHODS,
   ANALYSIS_METHOD_LABELS,
+  ANALYSIS_STATUS_LABELS,
   ANALYSIS_TARGETS,
   ANALYSIS_TARGET_LABELS,
   type AnalysisMethod,
   type AnalysisTarget,
 } from '../types/analysis';
+import { CATEGORY_LABELS } from '../types/sample';
 import { classifyByAnalysis, evaluateThresholds } from '../utils/classify';
+import { compareAnalysisDesc } from '../utils/conclusion';
 import { formatDate } from '../utils/format';
 
 interface AnalysisDraft {
@@ -54,6 +57,7 @@ export default function Analysis() {
   const sections = useSampleStore((s) => s.sections);
   const analysis = useSampleStore((s) => s.analysis);
   const addAnalysis = useSampleStore((s) => s.addAnalysis);
+  const promoteAnalysis = useSampleStore((s) => s.promoteAnalysis);
   const notify = useToastStore((s) => s.notify);
 
   const initial = useMemo<AnalysisDraft>(
@@ -103,9 +107,10 @@ export default function Analysis() {
       ni: Number(value.ni),
       kamaciteBandwidth: Number(value.kamaciteBandwidth),
       testedAt: value.testedAt,
+      status: 'current',
     });
     clear();
-    notify('检测记录已写入本地库');
+    notify('检测记录已入档为当前认定，同一样本的旧记录已退为历史');
     patch({ fa: 18.5, fs: 16, ni: 0.8, kamaciteBandwidth: 0.05 });
   };
 
@@ -347,28 +352,70 @@ export default function Analysis() {
           />
         ) : (
           <Stack spacing={1}>
-            {analysis.slice(0, 12).map((a) => {
-              const s = samples.find((x) => x.id === a.sampleId);
-              const ev = classifyByAnalysis(a);
-              return (
-                <Box
-                  key={a.id}
-                  sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.5 }}
-                >
-                  <Stack direction="row" justifyContent="space-between" flexWrap="wrap" gap={1}>
-                    <Typography variant="subtitle2">
-                      {s ? s.sampleNo : '未知样本'} · {ANALYSIS_METHOD_LABELS[a.method]} ·{' '}
-                      {formatDate(a.testedAt)}
+            {[...analysis]
+              .sort(compareAnalysisDesc)
+              .slice(0, 12)
+              .map((a) => {
+                const s = samples.find((x) => x.id === a.sampleId);
+                const ev = classifyByAnalysis(a);
+                const isCurrent = a.status === 'current';
+                const mismatches = s ? ev.category !== s.category : false;
+                return (
+                  <Box
+                    key={a.id}
+                    sx={{
+                      border: '1px solid',
+                      borderColor: isCurrent ? 'primary.main' : 'divider',
+                      borderLeft: isCurrent ? '4px solid' : '1px solid',
+                      borderLeftColor: isCurrent ? 'primary.main' : 'divider',
+                      borderRadius: 2,
+                      p: 1.5,
+                      bgcolor: isCurrent ? 'rgba(25,118,210,0.04)' : 'transparent',
+                    }}
+                  >
+                    <Stack direction="row" justifyContent="space-between" flexWrap="wrap" gap={1}>
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <Typography variant="subtitle2">
+                          {s ? s.sampleNo : '未知样本'} · {ANALYSIS_METHOD_LABELS[a.method]} ·{' '}
+                          {formatDate(a.testedAt)}
+                        </Typography>
+                        <Chip
+                          size="small"
+                          color={isCurrent ? 'primary' : 'default'}
+                          variant={isCurrent ? 'filled' : 'outlined'}
+                          label={ANALYSIS_STATUS_LABELS[a.status]}
+                        />
+                        {isCurrent && mismatches ? (
+                          <Chip
+                            size="small"
+                            color="warning"
+                            label={`待裁定：登记${CATEGORY_LABELS[s!.category]} / 认定${CATEGORY_LABELS[ev.category]}`}
+                          />
+                        ) : null}
+                      </Stack>
+                      <Stack direction="row" spacing={0.75} alignItems="center">
+                        <ClassificationBadge category={ev.category} showGroup={false} />
+                        {!isCurrent ? (
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => {
+                              void promoteAnalysis(a.id);
+                              notify('已将该历史记录改判为当前认定，原当前认定退为历史');
+                            }}
+                          >
+                            设为当前认定
+                          </Button>
+                        ) : null}
+                      </Stack>
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">
+                      Fa {a.fa} mol% · Fs {a.fs} mol% · Ni {a.ni} wt% · 带宽 {a.kamaciteBandwidth} mm ——{' '}
+                      {ev.summary}
                     </Typography>
-                    <ClassificationBadge category={ev.category} showGroup={false} />
-                  </Stack>
-                  <Typography variant="caption" color="text.secondary">
-                    Fa {a.fa} mol% · Fs {a.fs} mol% · Ni {a.ni} wt% · 带宽 {a.kamaciteBandwidth} mm ——{' '}
-                    {ev.summary}
-                  </Typography>
-                </Box>
-              );
-            })}
+                  </Box>
+                );
+              })}
           </Stack>
         )}
       </Paper>

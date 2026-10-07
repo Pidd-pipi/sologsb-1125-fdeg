@@ -27,6 +27,7 @@ import { useToastStore } from '../stores/uiStore';
 import {
   ANALYSIS_METHODS,
   ANALYSIS_METHOD_LABELS,
+  ANALYSIS_STATUS_LABELS,
   ANALYSIS_THRESHOLDS,
   type AnalysisMethod,
 } from '../types/analysis';
@@ -43,12 +44,14 @@ import {
   type SectionQuality,
 } from '../types/section';
 import {
+  CATEGORY_LABELS,
   FALL_OR_FIND_LABELS,
   STORAGE_LABELS,
   WEATHERING_LABELS,
 } from '../types/sample';
 import { FIND_ENVIRONMENT_LABELS, COORDINATE_SOURCE_LABELS } from '../types/find';
 import { classifyByAnalysis, evaluateThresholds } from '../utils/classify';
+import { compareAnalysisDesc } from '../utils/conclusion';
 import { formatDate, formatNumber, formatWeight } from '../utils/format';
 import { formatCoordinate } from '../utils/geo';
 
@@ -61,13 +64,23 @@ export default function Detail() {
   const analysis = useSampleStore((s) => s.analysis);
   const addSection = useSampleStore((s) => s.addSection);
   const addAnalysis = useSampleStore((s) => s.addAnalysis);
+  const promoteAnalysis = useSampleStore((s) => s.promoteAnalysis);
   const updateSample = useSampleStore((s) => s.updateSample);
   const notify = useToastStore((s) => s.notify);
 
   const sample = useMemo(() => samples.find((s) => s.id === id), [samples, id]);
   const find = useMemo(() => finds.find((f) => f.sampleId === id), [finds, id]);
   const mySections = useMemo(() => sections.filter((s) => s.sampleId === id), [sections, id]);
-  const myAnalysis = useMemo(() => analysis.filter((a) => a.sampleId === id), [analysis, id]);
+  const myAnalysis = useMemo(
+    () => analysis.filter((a) => a.sampleId === id).sort(compareAnalysisDesc),
+    [analysis, id],
+  );
+  // 当前认定记录：样本分类结论由它推导
+  const currentAnalysis = useMemo(
+    () => myAnalysis.find((a) => a.status === 'current') ?? myAnalysis[0],
+    [myAnalysis],
+  );
+  const currentAdvice = currentAnalysis ? classifyByAnalysis(currentAnalysis) : null;
 
   const [sectionDraft, setSectionDraft] = useState({
     sectionNo: '',
@@ -128,8 +141,9 @@ export default function Detail() {
       ni: Number(analysisDraft.ni),
       kamaciteBandwidth: Number(analysisDraft.kamaciteBandwidth),
       testedAt: analysisDraft.testedAt,
+      status: 'current',
     });
-    notify(`已为 ${sample.sampleNo} 写入一条检测记录`);
+    notify(`已为 ${sample.sampleNo} 写入复测并成为当前认定，旧记录退为历史`);
   };
 
   return (
@@ -148,6 +162,7 @@ export default function Detail() {
             find={find}
             sectionCount={mySections.length}
             analysisCount={myAnalysis.length}
+            derivedCategory={currentAdvice?.category}
           />
         </Grid>
 
@@ -167,11 +182,36 @@ export default function Detail() {
                   切换存放状态
                 </Button>
               </Stack>
-              <ClassificationBadge
-                category={sample.category}
-                group={sample.chemicalGroup}
-                size="medium"
-              />
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                <ClassificationBadge
+                  category={sample.category}
+                  group={sample.chemicalGroup}
+                  size="medium"
+                />
+                {currentAdvice && currentAdvice.category !== sample.category ? (
+                  <Chip size="small" color="warning" label="待裁定" />
+                ) : null}
+              </Stack>
+              {currentAnalysis && currentAdvice ? (
+                currentAdvice.category !== sample.category ? (
+                  <Alert severity="warning" variant="outlined">
+                    当前认定（{ANALYSIS_METHOD_LABELS[currentAnalysis.method]} ·{' '}
+                    {formatDate(currentAnalysis.testedAt)}）推导分类为「
+                    {CATEGORY_LABELS[currentAdvice.category]}」，与入藏登记的「
+                    {CATEGORY_LABELS[sample.category]}」不一致。现照登记值展示并标记待裁定，请核对后改判或修订登记。
+                  </Alert>
+                ) : (
+                  <Typography variant="caption" color="text.secondary">
+                    当前认定（{ANALYSIS_METHOD_LABELS[currentAnalysis.method]} ·{' '}
+                    {formatDate(currentAnalysis.testedAt)}）推导分类与入藏登记一致：
+                    {CATEGORY_LABELS[currentAdvice.category]}。
+                  </Typography>
+                )
+              ) : (
+                <Typography variant="caption" color="text.secondary">
+                  尚无检测记录，分类暂以入藏登记为准。
+                </Typography>
+              )}
               <Grid container spacing={1.5}>
                 <Grid item xs={6} sm={4}>
                   <Typography variant="caption" color="text.secondary">
@@ -414,7 +454,8 @@ export default function Detail() {
         <Grid item xs={12} md={5}>
           <Paper variant="outlined" sx={{ p: 2.5 }}>
             <Typography variant="h6" sx={{ mb: 1.5 }}>
-              分析检测记录（{myAnalysis.length}）
+              分析检测记录（{myAnalysis.length}
+              {myAnalysis.length ? ` · 当前认定 1 · 历史 ${myAnalysis.length - 1}` : ''}）
             </Typography>
             {myAnalysis.length === 0 ? (
               <Alert severity="info">暂无检测记录。</Alert>
@@ -422,16 +463,55 @@ export default function Detail() {
               <Stack spacing={1.25} sx={{ mb: 2 }}>
                 {myAnalysis.map((a) => {
                   const a2 = classifyByAnalysis(a);
+                  const isCurrent = a.status === 'current';
+                  const mismatches = a2.category !== sample.category;
                   return (
                     <Box
                       key={a.id}
-                      sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.5 }}
+                      sx={{
+                        border: '1px solid',
+                        borderColor: isCurrent ? 'primary.main' : 'divider',
+                        borderLeft: isCurrent ? '4px solid' : '1px solid',
+                        borderLeftColor: isCurrent ? 'primary.main' : 'divider',
+                        borderRadius: 2,
+                        p: 1.5,
+                        bgcolor: isCurrent ? 'rgba(25,118,210,0.04)' : 'transparent',
+                      }}
                     >
                       <Stack direction="row" justifyContent="space-between" flexWrap="wrap" gap={1}>
-                        <Typography variant="subtitle2">
-                          {ANALYSIS_METHOD_LABELS[a.method]} · {a.testedAt}
-                        </Typography>
-                        <ClassificationBadge category={a2.category} showGroup={false} />
+                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                          <Typography variant="subtitle2">
+                            {ANALYSIS_METHOD_LABELS[a.method]} · {a.testedAt}
+                          </Typography>
+                          <Chip
+                            size="small"
+                            color={isCurrent ? 'primary' : 'default'}
+                            variant={isCurrent ? 'filled' : 'outlined'}
+                            label={ANALYSIS_STATUS_LABELS[a.status]}
+                          />
+                          {isCurrent && mismatches ? (
+                            <Chip
+                              size="small"
+                              color="warning"
+                              label={`待裁定：登记${CATEGORY_LABELS[sample.category]} / 认定${CATEGORY_LABELS[a2.category]}`}
+                            />
+                          ) : null}
+                        </Stack>
+                        <Stack direction="row" spacing={0.75} alignItems="center">
+                          <ClassificationBadge category={a2.category} showGroup={false} />
+                          {!isCurrent ? (
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() => {
+                                void promoteAnalysis(a.id);
+                                notify('已将该历史记录改判为当前认定，原当前认定退为历史');
+                              }}
+                            >
+                              设为当前认定
+                            </Button>
+                          ) : null}
+                        </Stack>
                       </Stack>
                       <Typography variant="body2" color="text.secondary">
                         Fa {formatNumber(a.fa, 2, ' mol%')} · Fs {formatNumber(a.fs, 2, ' mol%')} · Ni{' '}
@@ -448,7 +528,7 @@ export default function Detail() {
 
             <Divider sx={{ my: 2 }} />
             <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>
-              就地录入检测数值
+              就地录入复测数值（保存后成为当前认定，旧记录自动退为历史）
             </Typography>
             <Stack spacing={1.5}>
               <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>

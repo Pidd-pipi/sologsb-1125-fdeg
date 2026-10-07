@@ -19,7 +19,7 @@ export interface SampleState {
   addFind: (input: Omit<FindRecord, 'id' | 'createdAt'>) => Promise<string>;
   addSection: (input: Omit<ThinSection, 'id' | 'createdAt'>) => Promise<string>;
   updateSection: (id: string, patch: Partial<ThinSection>) => Promise<void>;
-  addAnalysis: (input: Omit<AnalysisRecord, 'id' | 'createdAt'>) => Promise<string>;
+  addAnalysis: (input: Omit<AnalysisRecord, 'id' | 'createdAt' | 'status'>) => Promise<string>;
   nextSampleSeq: () => number;
 }
 
@@ -98,9 +98,32 @@ export const useSampleStore = create<SampleState>((set, get) => ({
   },
 
   addAnalysis: async (input) => {
-    const record: AnalysisRecord = { ...input, id: makeId('analysis'), createdAt: Date.now() };
-    await db.analysis.add(record);
-    set({ analysis: [record, ...get().analysis] });
+    // 复测入档：新记录成为当前认定，同样本旧的当前认定退为历史（仍可查）
+    const record: AnalysisRecord = {
+      ...input,
+      id: makeId('analysis'),
+      status: 'current',
+      createdAt: Date.now(),
+    };
+    await db.transaction('rw', db.analysis, async () => {
+      await db.analysis
+        .where('sampleId')
+        .equals(record.sampleId)
+        .modify((rec) => {
+          if (rec.status !== 'history') rec.status = 'history';
+        });
+      await db.analysis.add(record);
+    });
+    set({
+      analysis: [
+        record,
+        ...get().analysis.map((a) =>
+          a.sampleId === record.sampleId && a.status !== 'history'
+            ? { ...a, status: 'history' as const }
+            : a,
+        ),
+      ],
+    });
     return record.id;
   },
 

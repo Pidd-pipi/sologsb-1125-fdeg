@@ -6,6 +6,9 @@ export type AnalysisMethod = 'microprobe' | 'sem-eds';
 /** 检测对象类型 */
 export type AnalysisTarget = 'sample' | 'section';
 
+/** 认定状态：同一样本仅一条当前认定，复测入档后旧记录退为历史（仍可查） */
+export type AnalysisStatus = 'current' | 'history';
+
 /** 分析检测结果（AnalysisRecord） */
 export interface AnalysisRecord {
   id: string;
@@ -25,6 +28,8 @@ export interface AnalysisRecord {
   kamaciteBandwidth: number;
   /** 检测日期 YYYY-MM-DD */
   testedAt: string;
+  /** 认定状态：当前认定 / 历史记录 */
+  status: AnalysisStatus;
   createdAt: number;
 }
 
@@ -36,6 +41,11 @@ export const ANALYSIS_METHOD_LABELS: Record<AnalysisMethod, string> = {
 export const ANALYSIS_TARGET_LABELS: Record<AnalysisTarget, string> = {
   sample: '样本',
   section: '切片',
+};
+
+export const ANALYSIS_STATUS_LABELS: Record<AnalysisStatus, string> = {
+  current: '当前认定',
+  history: '历史记录',
 };
 
 export const ANALYSIS_METHODS: AnalysisMethod[] = ['microprobe', 'sem-eds'];
@@ -74,8 +84,10 @@ export interface AnalysisEvaluation {
   advice: ClassificationAdvice;
 }
 
-/** 生成一条空检测记录骨架 */
-export function emptyAnalysisDraft(sampleId: string): Omit<AnalysisRecord, 'id' | 'createdAt'> {
+/** 生成一条空检测记录骨架（status 由入档流程统一赋值） */
+export function emptyAnalysisDraft(
+  sampleId: string,
+): Omit<AnalysisRecord, 'id' | 'createdAt' | 'status'> {
   return {
     sampleId,
     target: 'sample',

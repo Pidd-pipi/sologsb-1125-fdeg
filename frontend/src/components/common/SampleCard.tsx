@@ -6,6 +6,7 @@ import {
   type MeteoriteSample,
 } from '../../types/sample';
 import type { FindRecord } from '../../types/find';
+import { useSampleConclusion } from '../../hooks/useSampleConclusion';
 import { formatWeight } from '../../utils/format';
 import { formatCoordinate } from '../../utils/geo';
 import { ClassificationBadge } from './Badge';
@@ -26,6 +27,7 @@ export function SampleCard({
   analysisCount = 0,
   to,
 }: SampleCardProps) {
+  const conclusion = useSampleConclusion(sample.id);
   const missing: string[] = [];
   if (!find) missing.push('缺坐标');
   if (sectionCount === 0) missing.push('缺切片');
@@ -62,7 +64,12 @@ export function SampleCard({
             </Typography>
           </Stack>
 
-          <ClassificationBadge category={sample.category} group={sample.chemicalGroup} />
+          <ClassificationBadge
+            category={conclusion?.displayCategory ?? sample.category}
+            group={sample.chemicalGroup}
+            pendingReview={conclusion?.pendingReview ?? false}
+            derivedCategory={conclusion?.derived?.category}
+          />
 
           <Typography variant="body2" color="text.secondary">
             {FALL_OR_FIND_LABELS[sample.fallOrFind]} · {WEATHERING_LABELS[sample.weathering]}

@@ -28,6 +28,7 @@ import { useToastStore } from '../stores/uiStore';
 import {
   ANALYSIS_METHODS,
   ANALYSIS_METHOD_LABELS,
+  ANALYSIS_STATUS_LABELS,
   ANALYSIS_TARGETS,
   ANALYSIS_TARGET_LABELS,
   type AnalysisMethod,
@@ -93,6 +94,7 @@ export default function Analysis() {
       return;
     }
     setError(null);
+    const superseded = analysis.some((a) => a.sampleId === value.sampleId && a.status === 'current');
     await addAnalysis({
       sampleId: value.sampleId,
       sectionId: value.target === 'section' ? value.sectionId : undefined,
@@ -105,7 +107,11 @@ export default function Analysis() {
       testedAt: value.testedAt,
     });
     clear();
-    notify('检测记录已写入本地库');
+    notify(
+      superseded
+        ? '检测记录已写入本地库并设为当前认定，原认定已退为历史'
+        : '检测记录已写入本地库并设为当前认定',
+    );
     patch({ fa: 18.5, fs: 16, ni: 0.8, kamaciteBandwidth: 0.05 });
   };
 
@@ -350,16 +356,31 @@ export default function Analysis() {
             {analysis.slice(0, 12).map((a) => {
               const s = samples.find((x) => x.id === a.sampleId);
               const ev = classifyByAnalysis(a);
+              const isCurrent = a.status === 'current';
               return (
                 <Box
                   key={a.id}
-                  sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.5 }}
+                  sx={{
+                    border: '1px solid',
+                    borderColor: isCurrent ? 'primary.main' : 'divider',
+                    borderRadius: 2,
+                    p: 1.5,
+                    opacity: isCurrent ? 1 : 0.75,
+                  }}
                 >
                   <Stack direction="row" justifyContent="space-between" flexWrap="wrap" gap={1}>
-                    <Typography variant="subtitle2">
-                      {s ? s.sampleNo : '未知样本'} · {ANALYSIS_METHOD_LABELS[a.method]} ·{' '}
-                      {formatDate(a.testedAt)}
-                    </Typography>
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <Typography variant="subtitle2">
+                        {s ? s.sampleNo : '未知样本'} · {ANALYSIS_METHOD_LABELS[a.method]} ·{' '}
+                        {formatDate(a.testedAt)}
+                      </Typography>
+                      <Chip
+                        size="small"
+                        color={isCurrent ? 'primary' : 'default'}
+                        variant={isCurrent ? 'filled' : 'outlined'}
+                        label={ANALYSIS_STATUS_LABELS[a.status]}
+                      />
+                    </Stack>
                     <ClassificationBadge category={ev.category} showGroup={false} />
                   </Stack>
                   <Typography variant="caption" color="text.secondary">

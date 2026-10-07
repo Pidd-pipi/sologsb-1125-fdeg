@@ -1,5 +1,5 @@
 import { ANALYSIS_THRESHOLDS, type AnalysisRecord, type ThresholdHit } from '../types/analysis';
-import type { ClassificationAdvice, SampleCategory } from '../types/sample';
+import type { ClassificationAdvice, MeteoriteSample, SampleCategory } from '../types/sample';
 
 /** 依据 Fa / Fs / Ni 与铁纹石带宽给出分类建议与置信说明 */
 export function classifyByAnalysis(
@@ -87,4 +87,46 @@ export function evaluateThresholds(
       description: t.description,
     };
   });
+}
+
+/** 样本分类结论：由当前认定的检测记录推导，展示时与入藏登记分类比对 */
+export interface SampleConclusion {
+  /** 当前认定的检测记录（无检测记录时为 null） */
+  current: AnalysisRecord | null;
+  /** 由当前认定推导的分类建议（无检测记录时为 null） */
+  derived: ClassificationAdvice | null;
+  /** 展示用分类：推导与登记不一致时先照登记值展示 */
+  displayCategory: SampleCategory;
+  /** 推导结论与入藏登记分类不一致，待裁定 */
+  pendingReview: boolean;
+}
+
+/** 取某样本的当前认定记录；缺失标记时兜底取最新一条（检测日期优先，录入时间决胜） */
+export function pickCurrentAnalysis(
+  list: AnalysisRecord[],
+  sampleId: string,
+): AnalysisRecord | null {
+  const mine = list.filter((a) => a.sampleId === sampleId);
+  if (!mine.length) return null;
+  const flagged = mine.filter((a) => a.status === 'current');
+  const pool = flagged.length ? flagged : mine;
+  return pool.reduce((latest, cur) => (compareAnalysisRecency(cur, latest) > 0 ? cur : latest));
+}
+
+/** 检测记录新旧比较：testedAt 为主、createdAt 决胜 */
+export function compareAnalysisRecency(a: AnalysisRecord, b: AnalysisRecord): number {
+  const byDate = String(a.testedAt ?? '').localeCompare(String(b.testedAt ?? ''));
+  if (byDate !== 0) return byDate;
+  return (a.createdAt ?? 0) - (b.createdAt ?? 0);
+}
+
+/** 由当前认定推导样本结论；与登记分类不一致时照登记值展示并标待裁定 */
+export function deriveSampleConclusion(
+  sample: MeteoriteSample,
+  analysisList: AnalysisRecord[],
+): SampleConclusion {
+  const current = pickCurrentAnalysis(analysisList, sample.id);
+  const derived = current ? classifyByAnalysis(current) : null;
+  const pendingReview = derived !== null && derived.category !== sample.category;
+  return { current, derived, displayCategory: sample.category, pendingReview };
 }

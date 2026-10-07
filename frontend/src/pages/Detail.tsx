@@ -27,6 +27,7 @@ import { useToastStore } from '../stores/uiStore';
 import {
   ANALYSIS_METHODS,
   ANALYSIS_METHOD_LABELS,
+  ANALYSIS_STATUS_LABELS,
   ANALYSIS_THRESHOLDS,
   type AnalysisMethod,
 } from '../types/analysis';
@@ -43,11 +44,13 @@ import {
   type SectionQuality,
 } from '../types/section';
 import {
+  CATEGORY_LABELS,
   FALL_OR_FIND_LABELS,
   STORAGE_LABELS,
   WEATHERING_LABELS,
 } from '../types/sample';
 import { FIND_ENVIRONMENT_LABELS, COORDINATE_SOURCE_LABELS } from '../types/find';
+import { useSampleConclusion } from '../hooks/useSampleConclusion';
 import { classifyByAnalysis, evaluateThresholds } from '../utils/classify';
 import { formatDate, formatNumber, formatWeight } from '../utils/format';
 import { formatCoordinate } from '../utils/geo';
@@ -68,6 +71,16 @@ export default function Detail() {
   const find = useMemo(() => finds.find((f) => f.sampleId === id), [finds, id]);
   const mySections = useMemo(() => sections.filter((s) => s.sampleId === id), [sections, id]);
   const myAnalysis = useMemo(() => analysis.filter((a) => a.sampleId === id), [analysis, id]);
+  const conclusion = useSampleConclusion(id);
+  // 当前认定置顶，历史记录按检测日期倒序跟随
+  const sortedAnalysis = useMemo(
+    () =>
+      [...myAnalysis].sort((a, b) => {
+        if (a.status !== b.status) return a.status === 'current' ? -1 : 1;
+        return b.testedAt.localeCompare(a.testedAt) || b.createdAt - a.createdAt;
+      }),
+    [myAnalysis],
+  );
 
   const [sectionDraft, setSectionDraft] = useState({
     sectionNo: '',
@@ -119,6 +132,7 @@ export default function Detail() {
   };
 
   const submitAnalysis = async () => {
+    const superseded = myAnalysis.some((a) => a.status === 'current');
     await addAnalysis({
       sampleId: sample.id,
       target: 'sample',
@@ -129,7 +143,11 @@ export default function Detail() {
       kamaciteBandwidth: Number(analysisDraft.kamaciteBandwidth),
       testedAt: analysisDraft.testedAt,
     });
-    notify(`已为 ${sample.sampleNo} 写入一条检测记录`);
+    notify(
+      superseded
+        ? `已为 ${sample.sampleNo} 写入复测记录并设为当前认定，原认定已退为历史`
+        : `已为 ${sample.sampleNo} 写入一条检测记录并设为当前认定`,
+    );
   };
 
   return (
@@ -168,10 +186,20 @@ export default function Detail() {
                 </Button>
               </Stack>
               <ClassificationBadge
-                category={sample.category}
+                category={conclusion?.displayCategory ?? sample.category}
                 group={sample.chemicalGroup}
                 size="medium"
+                pendingReview={conclusion?.pendingReview ?? false}
+                derivedCategory={conclusion?.derived?.category}
               />
+              {conclusion?.pendingReview && conclusion.derived ? (
+                <Alert severity="warning">
+                  当前认定（{conclusion.current ? ANALYSIS_METHOD_LABELS[conclusion.current.method] : ''}
+                  {conclusion.current ? ` · ${conclusion.current.testedAt}` : ''}）推导为「
+                  {CATEGORY_LABELS[conclusion.derived.category]}」，与入藏登记分类「
+                  {CATEGORY_LABELS[sample.category]}」不一致，先照登记值展示，待裁定。
+                </Alert>
+              ) : null}
               <Grid container spacing={1.5}>
                 <Grid item xs={6} sm={4}>
                   <Typography variant="caption" color="text.secondary">
@@ -420,17 +448,32 @@ export default function Detail() {
               <Alert severity="info">暂无检测记录。</Alert>
             ) : (
               <Stack spacing={1.25} sx={{ mb: 2 }}>
-                {myAnalysis.map((a) => {
+                {sortedAnalysis.map((a) => {
                   const a2 = classifyByAnalysis(a);
+                  const isCurrent = a.status === 'current';
                   return (
                     <Box
                       key={a.id}
-                      sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.5 }}
+                      sx={{
+                        border: '1px solid',
+                        borderColor: isCurrent ? 'primary.main' : 'divider',
+                        borderRadius: 2,
+                        p: 1.5,
+                        opacity: isCurrent ? 1 : 0.75,
+                      }}
                     >
                       <Stack direction="row" justifyContent="space-between" flexWrap="wrap" gap={1}>
-                        <Typography variant="subtitle2">
-                          {ANALYSIS_METHOD_LABELS[a.method]} · {a.testedAt}
-                        </Typography>
+                        <Stack direction="row" spacing={0.75} alignItems="center">
+                          <Typography variant="subtitle2">
+                            {ANALYSIS_METHOD_LABELS[a.method]} · {a.testedAt}
+                          </Typography>
+                          <Chip
+                            size="small"
+                            color={isCurrent ? 'primary' : 'default'}
+                            variant={isCurrent ? 'filled' : 'outlined'}
+                            label={ANALYSIS_STATUS_LABELS[a.status]}
+                          />
+                        </Stack>
                         <ClassificationBadge category={a2.category} showGroup={false} />
                       </Stack>
                       <Typography variant="body2" color="text.secondary">

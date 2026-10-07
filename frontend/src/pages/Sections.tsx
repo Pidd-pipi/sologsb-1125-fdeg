@@ -18,6 +18,7 @@ import {
 import { Link as RouterLink } from 'react-router-dom';
 import EmptyState from '../components/common/EmptyState';
 import ClassificationBadge from '../components/common/Badge';
+import { useSampleConclusions } from '../hooks/useSampleConclusion';
 import { useSampleFilter } from '../hooks/useSampleFilter';
 import { useSampleStore } from '../stores/sampleStore';
 import { useToastStore } from '../stores/uiStore';
@@ -47,6 +48,7 @@ export default function Sections() {
   const [selected, setSelected] = useState<string[]>([]);
 
   const sampleMap = useMemo(() => new Map(samples.map((s) => [s.id, s])), [samples]);
+  const conclusions = useSampleConclusions();
   const visibleSampleIds = useMemo(() => new Set(results.map((s) => s.id)), [results]);
 
   const filtered = useMemo(
@@ -181,8 +183,10 @@ export default function Sections() {
                           {sample.sampleNo} ↗
                         </Typography>
                         <ClassificationBadge
-                          category={sample.category}
+                          category={conclusions.get(sample.id)?.displayCategory ?? sample.category}
                           group={sample.chemicalGroup}
+                          pendingReview={conclusions.get(sample.id)?.pendingReview ?? false}
+                          derivedCategory={conclusions.get(sample.id)?.derived?.category}
                         />
                       </Stack>
                     ) : (
